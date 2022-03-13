@@ -1,0 +1,171 @@
+---
+title: "Week 4 - Predicting quality of workout"
+output:
+  html_document:
+    toc: true
+    toc_depth: 4
+    number_sections: true
+---
+# Background  
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset) 
+
+# Aim of the project  
+The goal of your project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set.  
+
+# Citation  
+Ugulino, W.; Cardador, D.; Vega, K.; Velloso, E.; Milidiu, R.; Fuks, H. Wearable Computing: Accelerometers' Data Classification of Body Postures and Movements. Proceedings of 21st Brazilian Symposium on Artificial Intelligence. Advances in Artificial Intelligence - SBIA 2012. In: Lecture Notes in Computer Science. , pp. 52-61. Curitiba, PR: Springer Berlin / Heidelberg, 2012. ISBN 978-3-642-34458-9. DOI: 10.1007/978-3-642-34459-6_6.  
+
+# Load Packages  
+```{r,warning=F, message=F,fig.show = 'hold', out.width = '100%'}
+library(ggplot2)
+library(ggsignif)
+library(data.table)
+library(ggbeeswarm)
+library(kableExtra)
+library(survival)
+library(survminer)
+library(caret)
+library(gplots)
+library(corrplot)
+library(dplyr)
+library(rattle)
+```
+
+# Load data  
+```{r,warning=F, message=F,fig.show = 'hold', out.width = '100%'}
+train= fread("F:/Downloads/pml-training.csv", data.table=F)
+test= fread("F:/Downloads/pml-testing.csv", data.table=F)
+```
+
+# Explore data 
+```{r,warning=F, message=F,fig.show = 'hold', out.width = '80%'}
+dim(train)
+kbl(train[1:2,], escape = F, row.names = NA) %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"))
+table(train$user_name)
+table(train$user_name)
+```
+
+# Approach 1.  
+Using only numerical variables  
+```{r,warning=F, message=F,fig.show = 'hold', out.width = '80%'}
+mytrain1 = as.data.frame(train[,-c(1:7)])
+mytrain1$classe = as.factor(mytrain1$classe)
+mytest1 =as.data.frame(test[,-c(1:7)])
+
+# Removing variables with more than 50% missing values
+mytrain1 =mytrain1[,apply(mytrain1,2, function(x)  {sum(is.na(x))}) < nrow(mytrain1)*0.5]
+```
+
+## Explore correlation between variables  
+I'm always a little bit worried about collinearity, but this doesn't seem to be a problem here.  
+
+```{r,warning=F, message=F,fig.show = 'hold', out.width = '80%'}
+corrplot(cor(select_if(mytrain1, is.numeric)),method = "color",tl.pos = "n",insig = "blank")
+```
+
+## Training RandomForest model with 5-fold cross-validation  
+```{r,warning=F, message=F,fig.show = 'hold', out.width = '80%'}
+set.seed(123)
+fitControl <- trainControl(method = "cv",
+                           number = 5,
+                           allowParallel = FALSE)
+
+rf.fit <- train(
+    classe ~ .,
+    method = "rf",
+    data = mytrain1,
+    trControl = fitControl
+)
+rf.fit 
+```
+
+## Final Model  
+```{r,warning=F, message=F,fig.show = 'hold', out.width = '80%'}
+rf.fit$finalModel
+```
+
+## Performance of the model  
+```{r,warning=F, message=F,fig.show = 'hold', out.width = '80%'}
+pred.rf <- predict(rf.fit, mytrain1)
+confM <- confusionMatrix(mytrain1$classe, pred.rf)
+confM$table %>%
+  kbl()  %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"))
+plot(rf.fit)
+confM$overall["Accuracy"]
+```
+
+## Importance of the top 10 features  
+```{r,warning=F, message=F,fig.show = 'hold', out.width = '80%'}
+importance <- varImp(rf.fit, scale = FALSE)
+plot(importance, top=10)
+```
+
+## Predicting for test-set  
+```{r,warning=F, message=F,fig.show = 'hold', out.width = '80%'}
+mytest1.pred.rf <- predict(rf.fit, mytest1)
+summary(mytest1.pred.rf )
+mytest1.pred.rf 
+```
+
+
+
+# Approach 2 - using also user_name variable  
+```{r,warning=F, message=F,fig.show = 'hold', out.width = '80%'}
+mytrain2 = as.data.frame(train[,-c(1,3:7)])
+mytrain2$classe = as.factor(mytrain2$classe)
+mytest2 =as.data.frame(test[,-c(1,3:7)])
+# Removing variables with more than 50% missing values
+mytrain2 =mytrain2[,apply(mytrain2,2, function(x)  {sum(is.na(x))}) < nrow(mytrain2)*0.5]
+```
+
+## Training RandomForest model with 5-fold cross-validation  
+```{r,warning=F, message=F,fig.show = 'hold', out.width = '80%'}
+set.seed(123)
+fitControl <- trainControl(method = "cv",
+                           number = 5,
+                           allowParallel = FALSE)
+
+rf.fit2 <- train(
+    classe ~ .,
+    method = "rf",
+    data = mytrain2,
+    trControl = fitControl
+)
+```
+
+## Final Model  
+```{r,warning=F, message=F,fig.show = 'hold', out.width = '80%'}
+rf.fit2$finalModel
+```
+
+## Performance of the model  
+```{r,warning=F, message=F,fig.show = 'hold', out.width = '80%'}
+pred.rf <- predict(rf.fit2, mytrain2)
+confM <- confusionMatrix(mytrain2$classe, pred.rf)
+confM$table %>%
+  kbl()  %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"))
+plot(rf.fit2)
+confM$overall["Accuracy"]
+```
+
+## Importance of the top 10 features  
+```{r,warning=F, message=F,fig.show = 'hold', out.width = '80%'}
+importance <- varImp(rf.fit2, scale = FALSE)
+plot(importance, top=10)
+```
+
+## Predicting for test-set  
+```{r,warning=F, message=F,fig.show = 'hold', out.width = '80%'}
+mytest2.pred.rf <- predict(rf.fit2, mytest2)
+summary(mytest2.pred.rf )
+mytest2.pred.rf 
+```
+
+# SessionInfo
+```{r,warning=F, message=F,fig.show = 'hold', out.width = '80%'}
+sessionInfo()
+```
